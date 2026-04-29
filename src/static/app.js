@@ -3,6 +3,92 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const signupContainer = document.getElementById("signup-container");
+
+  // Auth elements
+  const authBtn = document.getElementById("auth-btn");
+  const adminLabel = document.getElementById("admin-label");
+  const loginModal = document.getElementById("login-modal");
+  const loginForm = document.getElementById("login-form");
+  const loginError = document.getElementById("login-error");
+  const cancelLogin = document.getElementById("cancel-login");
+
+  // Auth state
+  let adminToken = sessionStorage.getItem("adminToken") || null;
+  let adminName = sessionStorage.getItem("adminName") || null;
+
+  function updateAuthUI() {
+    if (adminToken) {
+      authBtn.textContent = "🔓";
+      authBtn.title = "Logout";
+      adminLabel.textContent = `${adminName} (Admin)`;
+      adminLabel.classList.remove("hidden");
+      signupContainer.classList.remove("hidden");
+    } else {
+      authBtn.textContent = "👤";
+      authBtn.title = "Teacher Login";
+      adminLabel.classList.add("hidden");
+      signupContainer.classList.add("hidden");
+    }
+    // Re-render activities to show/hide delete buttons
+    fetchActivities();
+  }
+
+  authBtn.addEventListener("click", async () => {
+    if (adminToken) {
+      // Logout
+      await fetch("/logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      adminToken = null;
+      adminName = null;
+      sessionStorage.removeItem("adminToken");
+      sessionStorage.removeItem("adminName");
+      updateAuthUI();
+    } else {
+      loginModal.classList.remove("hidden");
+      document.getElementById("login-username").focus();
+    }
+  });
+
+  cancelLogin.addEventListener("click", () => {
+    loginModal.classList.add("hidden");
+    loginForm.reset();
+    loginError.classList.add("hidden");
+  });
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const username = document.getElementById("login-username").value;
+    const password = document.getElementById("login-password").value;
+
+    try {
+      const response = await fetch("/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const result = await response.json();
+
+      if (response.ok) {
+        adminToken = result.token;
+        adminName = result.name;
+        sessionStorage.setItem("adminToken", adminToken);
+        sessionStorage.setItem("adminName", adminName);
+        loginModal.classList.add("hidden");
+        loginForm.reset();
+        loginError.classList.add("hidden");
+        updateAuthUI();
+      } else {
+        loginError.textContent = result.detail || "Login failed";
+        loginError.classList.remove("hidden");
+      }
+    } catch {
+      loginError.textContent = "Could not connect to server.";
+      loginError.classList.remove("hidden");
+    }
+  });
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -30,7 +116,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 ${details.participants
                   .map(
                     (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
+                      `<li><span class="participant-email">${email}</span>${adminToken ? `<button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button>` : ""}</li>`
                   )
                   .join("")}
               </ul>
@@ -80,6 +166,7 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/unregister?email=${encodeURIComponent(email)}`,
         {
           method: "DELETE",
+          headers: adminToken ? { Authorization: `Bearer ${adminToken}` } : {},
         }
       );
 
@@ -124,6 +211,7 @@ document.addEventListener("DOMContentLoaded", () => {
         )}/signup?email=${encodeURIComponent(email)}`,
         {
           method: "POST",
+          headers: adminToken ? { Authorization: `Bearer ${adminToken}` } : {},
         }
       );
 
@@ -156,5 +244,5 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // Initialize app
-  fetchActivities();
+  updateAuthUI();
 });
